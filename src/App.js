@@ -113,6 +113,43 @@ const App = () => {
     setView('home');
   };
 
+  // Function to handle checkout
+  const handleCheckout = async () => {
+    if (cartState.items.length === 0) {
+      setMessage('Your cart is empty!');
+      return;
+    }
+
+    if (!token) {
+      setMessage('Please log in to checkout!');
+      setTimeout(() => setView('login'), 1500);
+      return;
+    }
+
+    try {
+      const config = {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token,
+        },
+      };
+      
+      const orderData = {
+        cartItems: cartState.items,
+        totalPrice: cartState.total,
+      };
+
+      await axios.post(`${API_BASE_URL}/orders`, orderData, config);
+      
+      dispatch({ type: 'CLEAR_CART' });
+      setMessage('Order placed successfully!');
+      setTimeout(() => setView('home'), 1500);
+    } catch (error) {
+      console.error('Checkout error:', error.response ? error.response.data.msg : error.message);
+      setMessage(error.response ? error.response.data.msg : 'Checkout failed. Please try again.');
+    }
+  };
+
   // Render different views based on state
   const renderView = () => {
     switch (view) {
@@ -149,7 +186,9 @@ const App = () => {
                       className="px-6 py-2 rounded-full bg-yellow-500 text-white font-semibold hover:bg-yellow-600 transition-colors">
                       Clear Cart
                     </button>
-                    <button className="px-6 py-2 rounded-full bg-green-500 text-white font-semibold hover:bg-green-600 transition-colors">
+                    <button 
+                      onClick={handleCheckout}
+                      className="px-6 py-2 rounded-full bg-green-500 text-white font-semibold hover:bg-green-600 transition-colors">
                       Checkout
                     </button>
                   </div>
