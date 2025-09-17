@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useReducer } from 'react';
 import axios from 'axios';
-import { ShoppingCart, LayoutDashboard, Truck, History } from 'lucide-react';
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
+import { ShoppingCart,  LayoutDashboard, Truck,  History } from 'lucide-react';
+
+const API_BASE_URL = 'http://localhost:5000/api';
 
 // Initial state for the shopping cart
 const initialCartState = {
@@ -89,50 +90,6 @@ const App = () => {
       document.body.removeChild(scriptDialogflow);
     };
   }, []); // The empty dependency array ensures this effect runs only once
-
-  // Fetch products on component mount or when the view changes to 'home'
-  useEffect(() => {
-    if (view === 'home') {
-      fetchProducts();
-    }
-  }, [view]);
-
-  // Fetch admin dashboard data
-  useEffect(() => {
-    if (view === 'admin' && isAdmin) {
-      fetchAdminData();
-    }
-  }, [view, isAdmin]);
-
-  // Fetch admin orders data
-  useEffect(() => {
-    if ((view === 'admin-orders' || view === 'admin-canceled-orders') && isAdmin) {
-      fetchAdminOrders();
-    }
-  }, [view, isAdmin]);
-
-  // Fetch delivery admin data
-  useEffect(() => {
-    if (view === 'delivery-admin' && isDeliveryAdmin) {
-      fetchDeliveryOrders();
-    }
-  }, [view, isDeliveryAdmin]);
-
-  // Fetch my orders data
-  useEffect(() => {
-    if (view === 'my-orders' && token) {
-      fetchMyOrders();
-    }
-  }, [view, token]);
-
-  const fetchProducts = async () => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/products`);
-      setProducts(response.data);
-    } catch (error) {
-      console.error('Error fetching products:', error);
-    }
-  };
 
   const handleAddToCart = (product) => {
     dispatch({ type: 'ADD_TO_CART', payload: product });
@@ -225,26 +182,6 @@ const App = () => {
     }
   };
   
-  const fetchAdminData = async () => {
-    try {
-      const config = { headers: { 'x-auth-token': token } };
-      const { data } = await axios.get(`${API_BASE_URL}/admin/dashboard`, config);
-      setAdminData(data);
-    } catch (error) {
-      console.error('Error fetching admin data:', error.response ? error.response.data.msg : error.message);
-    }
-  };
-
-  const fetchAdminOrders = async () => {
-    try {
-      const config = { headers: { 'x-auth-token': token } };
-      const { data } = await axios.get(`${API_BASE_URL}/admin/orders`, config);
-      setAdminOrders(data);
-    } catch (error) {
-      console.error('Error fetching admin orders:', error.response ? error.response.data.msg : error.message);
-    }
-  };
-
   const handleAddProduct = async (e) => {
     e.preventDefault();
     const productData = {
@@ -260,7 +197,6 @@ const App = () => {
       setTimeout(() => {
         setMessage('');
         e.target.reset();
-        fetchProducts(); // Refresh product list
       }, 1500);
     } catch (error) {
       console.error('Error adding product:', error.response ? error.response.data.msg : error.message);
@@ -269,22 +205,11 @@ const App = () => {
     }
   };
 
-  const fetchDeliveryOrders = async () => {
-    try {
-      const config = { headers: { 'x-auth-token': token } };
-      const { data } = await axios.get(`${API_BASE_URL}/delivery/orders`, config);
-      setDeliveryOrders(data);
-    } catch (error) {
-      console.error('Error fetching delivery orders:', error.response ? error.response.data.msg : error.message);
-    }
-  };
-
   const handleUpdateStatus = async (orderId, newStatus) => {
     try {
       const config = { headers: { 'x-auth-token': token } };
       await axios.put(`${API_BASE_URL}/delivery/orders/${orderId}/status`, { newStatus }, config);
       setMessage(`Order status updated to "${newStatus}".`);
-      fetchDeliveryOrders();
       setTimeout(() => setMessage(''), 1500);
     } catch (error) {
       console.error('Error updating order status:', error.response ? error.response.data.msg : error.message);
@@ -293,22 +218,11 @@ const App = () => {
     }
   };
 
-  const fetchMyOrders = async () => {
-    try {
-      const config = { headers: { 'x-auth-token': token } };
-      const { data } = await axios.get(`${API_BASE_URL}/orders/my-orders`, config);
-      setMyOrders(data);
-    } catch (error) {
-      console.error('Error fetching my orders:', error.response ? error.response.data.msg : error.message);
-    }
-  };
-
   const handleCancelOrder = async (orderId) => {
     try {
       const config = { headers: { 'x-auth-token': token } };
       await axios.put(`${API_BASE_URL}/orders/${orderId}/cancel`, {}, config);
       setMessage('Order canceled successfully!');
-      fetchMyOrders(); // Refresh my orders list
       setTimeout(() => setMessage(''), 1500);
     } catch (error) {
       console.error('Error canceling order:', error.response ? error.response.data.msg : error.message);
@@ -317,6 +231,85 @@ const App = () => {
     }
   };
   
+  // Fetch products on component mount or when the view changes to 'home'
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/products`);
+        setProducts(response.data);
+      } catch (error) {
+        console.error('Error fetching products:', error);
+      }
+    };
+    if (view === 'home') {
+      fetchProducts();
+    }
+  }, [view]);
+
+  // Fetch admin dashboard data
+  useEffect(() => {
+    const fetchAdminData = async () => {
+      try {
+        const config = { headers: { 'x-auth-token': token } };
+        const { data } = await axios.get(`${API_BASE_URL}/admin/dashboard`, config);
+        setAdminData(data);
+      } catch (error) {
+        console.error('Error fetching admin data:', error.response ? error.response.data.msg : error.message);
+      }
+    };
+    if (view === 'admin' && isAdmin) {
+      fetchAdminData();
+    }
+  }, [view, isAdmin, token]);
+
+  // Fetch admin orders data
+  useEffect(() => {
+    const fetchAdminOrders = async () => {
+      try {
+        const config = { headers: { 'x-auth-token': token } };
+        const { data } = await axios.get(`${API_BASE_URL}/admin/orders`, config);
+        setAdminOrders(data);
+      } catch (error) {
+        console.error('Error fetching admin orders:', error.response ? error.response.data.msg : error.message);
+      }
+    };
+    if ((view === 'admin-orders' || view === 'admin-canceled-orders') && isAdmin) {
+      fetchAdminOrders();
+    }
+  }, [view, isAdmin, token]);
+
+  // Fetch delivery admin data
+  useEffect(() => {
+    const fetchDeliveryOrders = async () => {
+      try {
+        const config = { headers: { 'x-auth-token': token } };
+        const { data } = await axios.get(`${API_BASE_URL}/delivery/orders`, config);
+        setDeliveryOrders(data);
+      } catch (error) {
+        console.error('Error fetching delivery orders:', error.response ? error.response.data.msg : error.message);
+      }
+    };
+    if (view === 'delivery-admin' && isDeliveryAdmin) {
+      fetchDeliveryOrders();
+    }
+  }, [view, isDeliveryAdmin, token]);
+
+  // Fetch my orders data
+  useEffect(() => {
+    const fetchMyOrders = async () => {
+      try {
+        const config = { headers: { 'x-auth-token': token } };
+        const { data } = await axios.get(`${API_BASE_URL}/orders/my-orders`, config);
+        setMyOrders(data);
+      } catch (error) {
+        console.error('Error fetching my orders:', error.response ? error.response.data.msg : error.message);
+      }
+    };
+    if (view === 'my-orders' && token) {
+      fetchMyOrders();
+    }
+  }, [view, token]);
+
   const renderView = () => {
     switch (view) {
       case 'cart':
