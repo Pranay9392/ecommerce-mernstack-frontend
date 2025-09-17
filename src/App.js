@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useReducer } from 'react';
 import axios from 'axios';
-import { ShoppingCart, User, PlusCircle, LayoutDashboard, Truck, CheckCheck, Undo2 } from 'lucide-react';
+import { ShoppingCart, User, PlusCircle, LayoutDashboard, Truck, CheckCheck, Undo2, Ban, History } from 'lucide-react';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -66,7 +66,9 @@ const App = () => {
   const [authError, setAuthError] = useState('');
   const [message, setMessage] = useState('');
   const [adminData, setAdminData] = useState(null);
+  const [adminOrders, setAdminOrders] = useState([]);
   const [deliveryOrders, setDeliveryOrders] = useState([]);
+  const [myOrders, setMyOrders] = useState([]);
 
   // Load Razorpay SDK
   useEffect(() => {
@@ -93,12 +95,26 @@ const App = () => {
     }
   }, [view, isAdmin]);
 
+  // Fetch admin orders data
+  useEffect(() => {
+    if ((view === 'admin-orders' || view === 'admin-canceled-orders') && isAdmin) {
+      fetchAdminOrders();
+    }
+  }, [view, isAdmin]);
+
   // Fetch delivery admin data
   useEffect(() => {
     if (view === 'delivery-admin' && isDeliveryAdmin) {
       fetchDeliveryOrders();
     }
   }, [view, isDeliveryAdmin]);
+
+  // Fetch my orders data
+  useEffect(() => {
+    if (view === 'my-orders' && token) {
+      fetchMyOrders();
+    }
+  }, [view, token]);
 
   const fetchProducts = async () => {
     try {
@@ -179,7 +195,6 @@ const App = () => {
         description: 'Order Payment',
         order_id: data.razorpayOrder.id,
         handler: async function (response) {
-          // You could verify the payment here on the backend, but for this demo, we'll assume success.
           dispatch({ type: 'CLEAR_CART' });
           setMessage('Payment successful! Order placed!');
           setTimeout(() => setView('home'), 1500);
@@ -208,6 +223,16 @@ const App = () => {
       setAdminData(data);
     } catch (error) {
       console.error('Error fetching admin data:', error.response ? error.response.data.msg : error.message);
+    }
+  };
+
+  const fetchAdminOrders = async () => {
+    try {
+      const config = { headers: { 'x-auth-token': token } };
+      const { data } = await axios.get(`${API_BASE_URL}/admin/orders`, config);
+      setAdminOrders(data);
+    } catch (error) {
+      console.error('Error fetching admin orders:', error.response ? error.response.data.msg : error.message);
     }
   };
 
@@ -255,6 +280,30 @@ const App = () => {
     } catch (error) {
       console.error('Error updating order status:', error.response ? error.response.data.msg : error.message);
       setMessage(error.response ? error.response.data.msg : 'Failed to update order status.');
+      setTimeout(() => setMessage(''), 2000);
+    }
+  };
+
+  const fetchMyOrders = async () => {
+    try {
+      const config = { headers: { 'x-auth-token': token } };
+      const { data } = await axios.get(`${API_BASE_URL}/orders/my-orders`, config);
+      setMyOrders(data);
+    } catch (error) {
+      console.error('Error fetching my orders:', error.response ? error.response.data.msg : error.message);
+    }
+  };
+
+  const handleCancelOrder = async (orderId) => {
+    try {
+      const config = { headers: { 'x-auth-token': token } };
+      await axios.put(`${API_BASE_URL}/orders/${orderId}/cancel`, {}, config);
+      setMessage('Order canceled successfully!');
+      fetchMyOrders(); // Refresh my orders list
+      setTimeout(() => setMessage(''), 1500);
+    } catch (error) {
+      console.error('Error canceling order:', error.response ? error.response.data.msg : error.message);
+      setMessage(error.response ? error.response.data.msg : 'Failed to cancel order.');
       setTimeout(() => setMessage(''), 2000);
     }
   };
@@ -452,6 +501,49 @@ const App = () => {
             </div>
           </div>
         );
+      case 'admin-orders':
+        const filteredOrders = adminOrders.filter(order => order.status === 'Canceled');
+        const ordersToDisplay = view === 'admin-canceled-orders' ? filteredOrders : adminOrders;
+
+        return (
+          <div className="container mx-auto p-4">
+            <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">All Orders</h2>
+            <div className="mb-4 flex justify-center space-x-4">
+              <button 
+                onClick={() => setView('admin-orders')}
+                className={`px-4 py-2 rounded-full font-semibold transition-colors ${view === 'admin-orders' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                All Orders
+              </button>
+              <button 
+                onClick={() => setView('admin-canceled-orders')}
+                className={`px-4 py-2 rounded-full font-semibold transition-colors ${view === 'admin-canceled-orders' ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                Canceled Orders
+              </button>
+            </div>
+            {ordersToDisplay.length > 0 ? (
+              <div className="grid grid-cols-1 gap-4">
+                {ordersToDisplay.map(order => (
+                  <div key={order._id} className="bg-white p-6 rounded-2xl shadow-xl">
+                    <h3 className="text-xl font-bold mb-2">Order ID: #{order._id}</h3>
+                    <p className="text-sm text-gray-500">Customer: {order.user.name} ({order.user.email})</p>
+                    <p className="text-gray-600 mt-1">Total: <span className="font-semibold">${order.totalPrice.toFixed(2)}</span></p>
+                    <p className={`text-sm font-bold mt-2 ${order.status === 'Delivered' ? 'text-green-600' : order.status === 'Canceled' ? 'text-red-600' : 'text-yellow-600'}`}>Status: {order.status}</p>
+                    <div className="mt-4">
+                      <h4 className="font-bold mb-2">Items:</h4>
+                      <ul className="list-disc list-inside space-y-1">
+                        {order.items.map((item, index) => (
+                          <li key={index} className="text-gray-700">{item.name} x {item.quantity} (${item.price.toFixed(2)} each)</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-gray-500 mt-8">No orders to display.</p>
+            )}
+          </div>
+        );
       case 'delivery-admin':
         return (
           <div className="container mx-auto p-4">
@@ -479,6 +571,45 @@ const App = () => {
               </div>
             ) : (
               <p className="text-center text-gray-500">No orders to display.</p>
+            )}
+          </div>
+        );
+      case 'my-orders':
+        return (
+          <div className="container mx-auto p-4">
+            <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">My Orders</h2>
+            {myOrders.length > 0 ? (
+              <div className="grid grid-cols-1 gap-4">
+                {myOrders.map(order => (
+                  <div key={order._id} className="bg-white p-6 rounded-2xl shadow-xl">
+                    <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-xl font-bold text-gray-800">Order #{order._id.substring(0, 8)}...</h3>
+                        <span className={`px-3 py-1 text-sm font-bold rounded-full ${order.status === 'Delivered' ? 'bg-green-100 text-green-600' : order.status === 'Canceled' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                            {order.status}
+                        </span>
+                    </div>
+                    <p className="text-gray-600 mt-1">Total: <span className="font-semibold">${order.totalPrice.toFixed(2)}</span></p>
+                    <p className="text-sm text-gray-500">Placed on: {new Date(order.createdAt).toLocaleDateString()}</p>
+                    <div className="mt-4">
+                      <h4 className="font-bold mb-2 text-gray-800">Items:</h4>
+                      <ul className="list-disc list-inside space-y-1">
+                        {order.items.map((item, index) => (
+                          <li key={index} className="text-gray-700">{item.name} x {item.quantity} (${item.price.toFixed(2)} each)</li>
+                        ))}
+                      </ul>
+                    </div>
+                    {(order.status === 'Processing' || order.status === 'Pending') && (
+                      <div className="mt-4 flex justify-end">
+                        <button onClick={() => handleCancelOrder(order._id)} className="px-4 py-2 bg-red-500 text-white text-sm font-semibold rounded-full hover:bg-red-600 transition-colors">
+                          Cancel Order
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-gray-500 mt-8">You have no orders yet.</p>
             )}
           </div>
         );
@@ -541,10 +672,20 @@ const App = () => {
                 <LayoutDashboard size={20} /> Admin
               </button>
             )}
+            {isAdmin && (
+              <button onClick={() => setView('admin-orders')} className="text-gray-600 hover:text-gray-900 transition-colors font-medium flex items-center gap-1">
+                <History size={20} /> Orders
+              </button>
+            )}
             {isDeliveryAdmin && (
               <button onClick={() => setView('delivery-admin')} className="text-gray-600 hover:text-gray-900 transition-colors font-medium flex items-center gap-1">
                 <Truck size={20} /> Delivery
               </button>
+            )}
+            {token && (
+               <button onClick={() => setView('my-orders')} className="text-gray-600 hover:text-gray-900 transition-colors font-medium flex items-center gap-1">
+                <History size={20} /> My Orders
+               </button>
             )}
             {token ? (
               <button onClick={handleLogout} className="text-gray-600 hover:text-gray-900 transition-colors font-medium">
