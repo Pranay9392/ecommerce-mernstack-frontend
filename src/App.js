@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useReducer } from 'react';
 import axios from 'axios';
-import { ShoppingCart, User, PlusCircle, LayoutDashboard, Truck, CheckCheck, Undo2, Ban, History } from 'lucide-react';
-
+import { ShoppingCart, LayoutDashboard, Truck, History } from 'lucide-react';
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
 // Initial state for the shopping cart
