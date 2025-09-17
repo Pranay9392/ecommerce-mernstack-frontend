@@ -2,7 +2,7 @@ import React, { useState, useEffect, useReducer } from 'react';
 import axios from 'axios';
 import { ShoppingCart, User, PlusCircle, LayoutDashboard, Truck, CheckCheck, Undo2, Ban, History } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
 // Initial state for the shopping cart
 const initialCartState = {
@@ -70,16 +70,26 @@ const App = () => {
   const [deliveryOrders, setDeliveryOrders] = useState([]);
   const [myOrders, setMyOrders] = useState([]);
 
-  // Load Razorpay SDK
+  // Use useEffect to load external scripts dynamically and only once.
   useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.async = true;
-    document.body.appendChild(script);
+    // Load Razorpay SDK
+    const scriptRazorpay = document.createElement('script');
+    scriptRazorpay.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    scriptRazorpay.async = true;
+    document.body.appendChild(scriptRazorpay);
+
+    // Load Dialogflow Messenger script
+    const scriptDialogflow = document.createElement('script');
+    scriptDialogflow.src = 'https://www.gstatic.com/dialogflow-console/fast/messenger/bootstrap.js?v=1';
+    scriptDialogflow.async = true;
+    document.body.appendChild(scriptDialogflow);
+
+    // Cleanup function to remove scripts on component unmount
     return () => {
-      document.body.removeChild(script);
+      document.body.removeChild(scriptRazorpay);
+      document.body.removeChild(scriptDialogflow);
     };
-  }, []);
+  }, []); // The empty dependency array ensures this effect runs only once
 
   // Fetch products on component mount or when the view changes to 'home'
   useEffect(() => {
@@ -723,6 +733,14 @@ const App = () => {
       <main className="py-12">
         {renderView()}
       </main>
+
+      <df-messenger
+        intent="WELCOME"
+        chat-title="test"
+        agent-id="7dc8b992-8ca0-43d0-9d43-08505b2ad3dc"
+        language-code="en"
+      ></df-messenger>
+
     </div>
   );
 };
