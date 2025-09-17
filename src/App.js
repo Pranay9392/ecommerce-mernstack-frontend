@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useReducer } from 'react';
 import axios from 'axios';
-import { ShoppingCart, User, PlusCircle } from 'lucide-react';
-import { AlertTriangle } from 'lucide-react';
+import { ShoppingCart, User, PlusCircle, LayoutDashboard, Truck, CheckCheck, Undo2 } from 'lucide-react';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -57,22 +56,50 @@ const cartReducer = (state, action) => {
 
 const App = () => {
   const [products, setProducts] = useState([]);
-  const [view, setView] = useState('home'); // 'home', 'product', 'cart', 'login', 'register'
+  const [view, setView] = useState('home');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [cartState, dispatch] = useReducer(cartReducer, initialCartState);
   const [token, setToken] = useState(localStorage.getItem('token'));
+  const [isAdmin, setIsAdmin] = useState(localStorage.getItem('isAdmin') === 'true');
+  const [isDeliveryAdmin, setIsDeliveryAdmin] = useState(localStorage.getItem('isDeliveryAdmin') === 'true');
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
   const [authError, setAuthError] = useState('');
   const [message, setMessage] = useState('');
-  
+  const [adminData, setAdminData] = useState(null);
+  const [deliveryOrders, setDeliveryOrders] = useState([]);
+
+  // Load Razorpay SDK
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    document.body.appendChild(script);
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
   // Fetch products on component mount or when the view changes to 'home'
   useEffect(() => {
     if (view === 'home') {
       fetchProducts();
     }
   }, [view]);
-  
-  // Function to fetch products from the backend
+
+  // Fetch admin dashboard data
+  useEffect(() => {
+    if (view === 'admin' && isAdmin) {
+      fetchAdminData();
+    }
+  }, [view, isAdmin]);
+
+  // Fetch delivery admin data
+  useEffect(() => {
+    if (view === 'delivery-admin' && isDeliveryAdmin) {
+      fetchDeliveryOrders();
+    }
+  }, [view, isDeliveryAdmin]);
+
   const fetchProducts = async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/products`);
@@ -82,14 +109,12 @@ const App = () => {
     }
   };
 
-  // Function to handle adding a product to the cart
   const handleAddToCart = (product) => {
     dispatch({ type: 'ADD_TO_CART', payload: product });
     setMessage(`${product.name} added to cart!`);
     setTimeout(() => setMessage(''), 2000);
   };
 
-  // Function to handle user registration or login
   const handleAuthSubmit = async (e, type) => {
     e.preventDefault();
     setAuthError('');
@@ -97,29 +122,34 @@ const App = () => {
       const endpoint = type === 'register' ? 'register' : 'login';
       const response = await axios.post(`${API_BASE_URL}/${endpoint}`, authForm);
       localStorage.setItem('token', response.data.token);
+      localStorage.setItem('isAdmin', response.data.isAdmin);
+      localStorage.setItem('isDeliveryAdmin', response.data.isDeliveryAdmin);
       setToken(response.data.token);
+      setIsAdmin(response.data.isAdmin);
+      setIsDeliveryAdmin(response.data.isDeliveryAdmin);
       setAuthForm({ name: '', email: '', password: '' });
-      setView('home'); // Go back to home page after successful auth
+      setView('home');
     } catch (error) {
       console.error('Auth error:', error.response.data.msg);
       setAuthError(error.response.data.msg);
     }
   };
 
-  // Function to handle logout
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('isAdmin');
+    localStorage.removeItem('isDeliveryAdmin');
     setToken(null);
+    setIsAdmin(false);
+    setIsDeliveryAdmin(false);
     setView('home');
   };
 
-  // Function to handle checkout
   const handleCheckout = async () => {
     if (cartState.items.length === 0) {
       setMessage('Your cart is empty!');
       return;
     }
-
     if (!token) {
       setMessage('Please log in to checkout!');
       setTimeout(() => setView('login'), 1500);
@@ -133,24 +163,102 @@ const App = () => {
           'x-auth-token': token,
         },
       };
-      
+
       const orderData = {
         cartItems: cartState.items,
         totalPrice: cartState.total,
       };
 
-      await axios.post(`${API_BASE_URL}/orders`, orderData, config);
-      
-      dispatch({ type: 'CLEAR_CART' });
-      setMessage('Order placed successfully!');
-      setTimeout(() => setView('home'), 1500);
+      const { data } = await axios.post(`${API_BASE_URL}/orders/pay`, orderData, config);
+
+      const options = {
+        key: 'rzp_test_RFO0xjdVNdABgD',
+        amount: data.razorpayOrder.amount,
+        currency: 'INR',
+        name: 'E-commerce App',
+        description: 'Order Payment',
+        order_id: data.razorpayOrder.id,
+        handler: async function (response) {
+          // You could verify the payment here on the backend, but for this demo, we'll assume success.
+          dispatch({ type: 'CLEAR_CART' });
+          setMessage('Payment successful! Order placed!');
+          setTimeout(() => setView('home'), 1500);
+        },
+        modal: {
+          ondismiss: function () {
+            setMessage('Payment failed or was canceled.');
+            setTimeout(() => setMessage(''), 2000);
+          }
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+
     } catch (error) {
       console.error('Checkout error:', error.response ? error.response.data.msg : error.message);
       setMessage(error.response ? error.response.data.msg : 'Checkout failed. Please try again.');
     }
   };
+  
+  const fetchAdminData = async () => {
+    try {
+      const config = { headers: { 'x-auth-token': token } };
+      const { data } = await axios.get(`${API_BASE_URL}/admin/dashboard`, config);
+      setAdminData(data);
+    } catch (error) {
+      console.error('Error fetching admin data:', error.response ? error.response.data.msg : error.message);
+    }
+  };
 
-  // Render different views based on state
+  const handleAddProduct = async (e) => {
+    e.preventDefault();
+    const productData = {
+      name: e.target.name.value,
+      description: e.target.description.value,
+      price: parseFloat(e.target.price.value),
+      imageUrl: e.target.imageUrl.value,
+    };
+    try {
+      const config = { headers: { 'x-auth-token': token } };
+      await axios.post(`${API_BASE_URL}/products`, productData, config);
+      setMessage('Product added successfully!');
+      setTimeout(() => {
+        setMessage('');
+        e.target.reset();
+        fetchProducts(); // Refresh product list
+      }, 1500);
+    } catch (error) {
+      console.error('Error adding product:', error.response ? error.response.data.msg : error.message);
+      setMessage(error.response ? error.response.data.msg : 'Failed to add product.');
+      setTimeout(() => setMessage(''), 2000);
+    }
+  };
+
+  const fetchDeliveryOrders = async () => {
+    try {
+      const config = { headers: { 'x-auth-token': token } };
+      const { data } = await axios.get(`${API_BASE_URL}/delivery/orders`, config);
+      setDeliveryOrders(data);
+    } catch (error) {
+      console.error('Error fetching delivery orders:', error.response ? error.response.data.msg : error.message);
+    }
+  };
+
+  const handleUpdateStatus = async (orderId, newStatus) => {
+    try {
+      const config = { headers: { 'x-auth-token': token } };
+      await axios.put(`${API_BASE_URL}/delivery/orders/${orderId}/status`, { newStatus }, config);
+      setMessage(`Order status updated to "${newStatus}".`);
+      fetchDeliveryOrders();
+      setTimeout(() => setMessage(''), 1500);
+    } catch (error) {
+      console.error('Error updating order status:', error.response ? error.response.data.msg : error.message);
+      setMessage(error.response ? error.response.data.msg : 'Failed to update order status.');
+      setTimeout(() => setMessage(''), 2000);
+    }
+  };
+  
   const renderView = () => {
     switch (view) {
       case 'cart':
@@ -283,6 +391,97 @@ const App = () => {
             </div>
           </div>
         );
+      case 'admin':
+        return (
+          <div className="container mx-auto p-4">
+            <h2 className="text-3xl font-bold mb-8 text-center text-gray-800">Admin Dashboard</h2>
+            {adminData ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
+                  <div className="text-5xl font-bold text-blue-600">{adminData.productCount}</div>
+                  <div className="text-lg text-gray-600 mt-2">Total Products</div>
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
+                  <div className="text-5xl font-bold text-green-600">{adminData.deliveredOrders}</div>
+                  <div className="text-lg text-gray-600 mt-2">Delivered Orders</div>
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
+                  <div className="text-5xl font-bold text-red-600">{adminData.returnedOrders}</div>
+                  <div className="text-lg text-gray-600 mt-2">Returned Orders</div>
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
+                  <div className="text-5xl font-bold text-yellow-600">{adminData.pendingOrders}</div>
+                  <div className="text-lg text-gray-600 mt-2">Pending Orders</div>
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
+                  <div className="text-5xl font-bold text-purple-600">{adminData.processingOrders}</div>
+                  <div className="text-lg text-gray-600 mt-2">Processing Orders</div>
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
+                  <div className="text-5xl font-bold text-gray-800">{adminData.totalOrders}</div>
+                  <div className="text-lg text-gray-600 mt-2">Total Orders</div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-center text-gray-500">Loading dashboard data...</p>
+            )}
+
+            <div className="bg-white p-6 rounded-2xl shadow-xl mb-8">
+                <h3 className="text-2xl font-bold text-gray-800 mb-4">Add New Product</h3>
+                <form onSubmit={handleAddProduct} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Product Name</label>
+                        <input type="text" name="name" required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Product Price</label>
+                        <input type="number" name="price" required step="0.01" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                    </div>
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700">Description</label>
+                        <textarea name="description" required rows="3" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"></textarea>
+                    </div>
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700">Image URL</label>
+                        <input type="url" name="imageUrl" required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                    </div>
+                    <div className="md:col-span-2 flex justify-end">
+                        <button type="submit" className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-full hover:bg-blue-700 transition-colors">Add Product</button>
+                    </div>
+                </form>
+            </div>
+          </div>
+        );
+      case 'delivery-admin':
+        return (
+          <div className="container mx-auto p-4">
+            <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">Delivery Admin Panel</h2>
+            {deliveryOrders.length > 0 ? (
+              <div className="grid grid-cols-1 gap-4">
+                {deliveryOrders.map(order => (
+                  <div key={order._id} className="bg-white p-6 rounded-2xl shadow-xl">
+                    <h3 className="text-xl font-bold mb-2">Order #{order._id.substring(0, 8)}...</h3>
+                    <p className="text-gray-600">Total Price: <span className="font-semibold">${order.totalPrice.toFixed(2)}</span></p>
+                    <p className={`text-sm font-bold mt-2 ${order.status === 'Delivered' ? 'text-green-600' : 'text-yellow-600'}`}>Status: {order.status}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button onClick={() => handleUpdateStatus(order._id, 'Processing')} className="px-4 py-2 bg-purple-500 text-white text-sm font-semibold rounded-full hover:bg-purple-600 transition-colors">
+                        Processing
+                      </button>
+                      <button onClick={() => handleUpdateStatus(order._id, 'Delivered')} className="px-4 py-2 bg-green-500 text-white text-sm font-semibold rounded-full hover:bg-green-600 transition-colors">
+                        Delivered
+                      </button>
+                      <button onClick={() => handleUpdateStatus(order._id, 'Returned')} className="px-4 py-2 bg-red-500 text-white text-sm font-semibold rounded-full hover:bg-red-600 transition-colors">
+                        Returned
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-gray-500">No orders to display.</p>
+            )}
+          </div>
+        );
       default: // 'home'
         return (
           <div className="container mx-auto p-4">
@@ -337,6 +536,16 @@ const App = () => {
             E-Commerce App
           </button>
           <div className="flex items-center space-x-4">
+            {isAdmin && (
+              <button onClick={() => setView('admin')} className="text-gray-600 hover:text-gray-900 transition-colors font-medium flex items-center gap-1">
+                <LayoutDashboard size={20} /> Admin
+              </button>
+            )}
+            {isDeliveryAdmin && (
+              <button onClick={() => setView('delivery-admin')} className="text-gray-600 hover:text-gray-900 transition-colors font-medium flex items-center gap-1">
+                <Truck size={20} /> Delivery
+              </button>
+            )}
             {token ? (
               <button onClick={handleLogout} className="text-gray-600 hover:text-gray-900 transition-colors font-medium">
                 Logout
@@ -365,7 +574,7 @@ const App = () => {
 
       {/* Message and Error Banners */}
       {message && (
-        <div className="fixed top-20 right-4 p-4 rounded-lg bg-green-500 text-white shadow-xl animate-fade-in-down transition-opacity">
+        <div className="fixed top-20 right-4 p-4 rounded-lg bg-green-500 text-white shadow-xl animate-fade-in-down transition-opacity z-50">
           {message}
         </div>
       )}
